@@ -18,22 +18,23 @@ class MethodChannelNfcpkg extends NfcpkgPlatform {
 
   @override
   Future<bool> poll() async {
-    var data = await methodChannel.invokeMethod('poll');
-    return data;
-  }
-
-  @override
-  Future<String> transceive<String>(String capdu) async {
     int technologies = 0x8;
     // if (readIso14443A) technologies |= 0x1;
     // if (readIso14443B) technologies |= 0x2;
     // if (readIso18092) technologies |= 0x4;
     // if (readIso15693) technologies |= 0x8;
     int pollTimeout = 20 * 1000;
-    var data = await methodChannel.invokeMethod('transceive', {
-      'data': capdu,
+    var data = await methodChannel.invokeMethod('poll', {
       "technologies": technologies,
       'timeout': pollTimeout,
+    });
+    return data;
+  }
+
+  @override
+  Future<String> transceive<String>(String capdu) async {
+    var data = await methodChannel.invokeMethod('transceive', {
+      'data': capdu,
     });
     return data;
   }
