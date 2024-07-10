@@ -49,6 +49,7 @@ class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private var tagTechnology: TagTechnology? = null
     private var ndefTechnology: Ndef? = null
     private var mifareInfo: MifareInfo? = null
+    private var nfcAred: NfcA? = null
 
 //    private lateinit var nfcHandlerThread: HandlerThread
 //    private lateinit var nfcHandler: Handler
@@ -91,7 +92,10 @@ class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             val technologies = call.argument<Int>("technologies")!!
             pollTag(adapter, result, timeout, technologies)
         } else if (call.method == "transceive") {
-            
+            val data = call.argument<String>("data")!!
+            val (sendingBytes, sendingHex) = canonicalizeData(data)
+            val resp = nfcAred?.transceive(sendingBytes)
+            result.success(resp?.toHexString())
         } else {
             result.notImplemented()
         }
@@ -145,6 +149,7 @@ class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
                 atqa = aTag.atqa.toHexString()
                 sak = byteArrayOf(aTag.sak.toByte()).toHexString()
                 tagTechnology = aTag
+                nfcAred = aTag
                 when {
                     tag.techList.contains(IsoDep::class.java.name) -> {
                         standard = "ISO 14443-4 (Type A)"
