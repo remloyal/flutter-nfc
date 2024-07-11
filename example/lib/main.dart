@@ -49,10 +49,19 @@ class _MyAppState extends State<MyApp> {
 
   send() async {
     var state = await _nfcpkgPlugin.poll();
-    if (state) {
-      var data = await _nfcpkgPlugin.transceive("40B1B040000000");
-      print(data);
-    }
+    // if (state) {
+    //   print(data);
+    // }
+    print(state);
+
+    var data = await _nfcpkgPlugin.transceive("40B1B040000000");
+    print(data);
+
+    var data1 = await _nfcpkgPlugin.transceive("40C00600000000");
+    print(data1);
+    await Future.delayed(Duration(milliseconds: 500));
+    var data2 = await _nfcpkgPlugin.transceive("40C08400000000");
+    print(data2);
   }
 
   @override

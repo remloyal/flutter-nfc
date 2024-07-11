@@ -3,25 +3,15 @@ package com.example.nfcpkg
 import android.app.Activity
 import android.nfc.NfcAdapter
 import android.nfc.Tag
-import android.nfc.tech.IsoDep
-import android.nfc.tech.MifareClassic
-import android.nfc.tech.MifareUltralight
 import android.nfc.tech.Ndef
-import android.nfc.tech.NdefFormatable
 import android.nfc.tech.NfcA
-import android.nfc.tech.NfcB
-import android.nfc.tech.NfcF
-import android.nfc.tech.NfcV
 import android.nfc.tech.TagTechnology
-import android.os.Build
-
+import android.os.Bundle
 import com.example.nfcpkg.ByteUtils.canonicalizeData
-import com.example.nfcpkg.ByteUtils.hexToBytes
 import com.example.nfcpkg.ByteUtils.toHexString
-import com.example.nfcpkg.MifareUtils.readBlock
-import com.example.nfcpkg.MifareUtils.readSector
-import com.example.nfcpkg.MifareUtils.writeBlock
-
+import com.fmsh.nfcinstruct.GeneralNFC
+import com.fmsh.nfcinstruct.callback.OnResultCallback
+import io.flutter.Log
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
 import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding
@@ -29,13 +19,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import java.io.IOException
-import java.lang.Exception
-import java.util.*
-import io.flutter.Log
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.Timer
+import java.util.TimerTask
 
 class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     /// The MethodChannel that will the communication between Flutter and native Android
@@ -57,12 +41,17 @@ class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
     private lateinit var channel: MethodChannel
     private lateinit var adapter: NfcAdapter
 
+    private lateinit var mWorkerThreadHan: WorkerThreadHandler
 
+    private var tagAll: Tag? = null
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "nfcpkg")
         channel.setMethodCallHandler(this)
         adapter = NfcAdapter.getDefaultAdapter(flutterPluginBinding.applicationContext)
+        mWorkerThreadHan = WorkerThreadHandler()
+//        tags = mutableMapOf()
     }
+
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
     }
@@ -93,9 +82,32 @@ class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
             pollTag(adapter, result, timeout, technologies)
         } else if (call.method == "transceive") {
             val data = call.argument<String>("data")!!
-            val (sendingBytes, sendingHex) = canonicalizeData(data)
-            val resp = nfcAred?.transceive(sendingBytes)
-            result.success(resp?.toHexString())
+//            40B1B040000000
+//                    40C00600000000
+//                    40C08400000000
+//            val (bt1, _) = canonicalizeData("40B1B040000000")
+//            val (bt2, _) = canonicalizeData("40C00600000000")
+//            val (bt3, _) = canonicalizeData("40C08400000000")
+            var tag = tagAll as Tag
+////            val aTag = NfcA.get(tag)
+////            val resp = nfcAred?.transceive(sendingBytes)
+//            mWorkerThreadHan.handleMessage(10, bt1)
+//            mWorkerThreadHan.handleMessage(10, bt2)
+//            Thread.sleep(400)
+//            mWorkerThreadHan.handleMessage(10, bt3)
+
+            val aTag = NfcA.get(tag)
+//            aTag.connect()
+//            var data1 = aTag.transceive(bt1)
+//            var data2 = aTag.transceive(bt2)
+//            Thread.sleep(800)
+//            var data3 = aTag.transceive(bt3)
+//            System.out.println(data1.toHexString())
+//            System.out.println(data2.toHexString())
+//            System.out.println(data3.toHexString())
+            val (bt, _) = canonicalizeData(data)
+            var data1 = aTag.transceive(bt)
+            result.success(data1.toHexString())
         } else {
             result.notImplemented()
         }
@@ -103,167 +115,137 @@ class NfcpkgPlugin : FlutterPlugin, MethodCallHandler, ActivityAware {
 
 
     private fun pollTag(nfcAdapter: NfcAdapter, result: Result, timeout: Int, technologies: Int) {
-
-//        pollingTimeoutTask = Timer().schedule(timeout.toLong()) {
-//            try {
-//                if (activity.get() != null) {
-//
-//                    nfcAdapter.disableReaderMode(activity.get())
-//                }
-//            } catch (ex: Exception) {
-//                Log.w(TAG, "Cannot disable reader mode", ex)
-//            }
-//            result.error("408", "Polling tag timeout", null)
-//        }
+//        mWorkerThreadHan.
 
         val pollHandler = NfcAdapter.ReaderCallback { tag ->
-//            pollingTimeoutTask?.cancel()
+            tagAll = tag
+            GeneralNFC.getInstance().setTag(tag)
+            result.success(true)
+        }
+        val READER_FLAGS = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_V
+        val option = Bundle()
+        // 延迟对卡片的检测
+        option.putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 1000)
 
-            // common fields
-            val type: String
-            val id = tag.id.toHexString()
-            val standard: String
-            // ISO 14443 Type A
-            var atqa = ""
-            var sak = ""
-            // ISO 14443 Type B
-            var protocolInfo = ""
-            var applicationData = ""
-            // ISO 7816
-            var historicalBytes = ""
-            var hiLayerResponse = ""
-            // NFC-F / Felica
-            var manufacturer = ""
-            var systemCode = ""
-            // NFC-V
-            var dsfId = ""
-            // NDEF
-            var ndefAvailable = false
-            var ndefWritable = false
-            var ndefCanMakeReadOnly = false
-            var ndefCapacity = 0
-            var ndefType = ""
+        nfcAdapter.enableReaderMode(activity, pollHandler, READER_FLAGS, option)
 
-            if (tag.techList.contains(NfcA::class.java.name)) {
-                val aTag = NfcA.get(tag)
-                atqa = aTag.atqa.toHexString()
-                sak = byteArrayOf(aTag.sak.toByte()).toHexString()
-                tagTechnology = aTag
-                nfcAred = aTag
-                when {
-                    tag.techList.contains(IsoDep::class.java.name) -> {
-                        standard = "ISO 14443-4 (Type A)"
-                        type = "iso7816"
-                        val isoDep = IsoDep.get(tag)
-                        tagTechnology = isoDep
-                        historicalBytes = isoDep.historicalBytes.toHexString()
-                    }
-                    tag.techList.contains(MifareClassic::class.java.name) -> {
-                        standard = "ISO 14443-3 (Type A)"
-                        type = "mifare_classic"
-                        with(MifareClassic.get(tag)) {
-                            tagTechnology = this
-                            mifareInfo = MifareInfo(
-                                this.type,
-                                size,
-                                MifareClassic.BLOCK_SIZE,
-                                blockCount,
-                                sectorCount
-                            )
-                        }
-                    }
-                    tag.techList.contains(MifareUltralight::class.java.name) -> {
-                        standard = "ISO 14443-3 (Type A)"
-                        type = "mifare_ultralight"
-                        with(MifareUltralight.get(tag)) {
-                            tagTechnology = this
-                            mifareInfo = MifareInfo.fromUltralight(this.type)
-                        }
-                    }
-                    else -> {
-                        standard = "ISO 14443-3 (Type A)"
-                        type = "unknown"
-                    }
-                }
-            } else if (tag.techList.contains(NfcB::class.java.name)) {
-                val bTag = NfcB.get(tag)
-                protocolInfo = bTag.protocolInfo.toHexString()
-                applicationData = bTag.applicationData.toHexString()
-                if (tag.techList.contains(IsoDep::class.java.name)) {
-                    type = "iso7816"
-                    standard = "ISO 14443-4 (Type B)"
-                    val isoDep = IsoDep.get(tag)
-                    tagTechnology = isoDep
-                    hiLayerResponse = isoDep.hiLayerResponse.toHexString()
-                } else {
-                    type = "unknown"
-                    standard = "ISO 14443-3 (Type B)"
-                    tagTechnology = bTag
-                }
-            } else if (tag.techList.contains(NfcF::class.java.name)) {
-                standard = "ISO 18092 (FeliCa)"
-                type = "iso18092"
-                val fTag = NfcF.get(tag)
-                manufacturer = fTag.manufacturer.toHexString()
-                systemCode = fTag.systemCode.toHexString()
-                tagTechnology = fTag
-            } else if (tag.techList.contains(NfcV::class.java.name)) {
-                standard = "ISO 15693"
-                type = "iso15693"
-                val vTag = NfcV.get(tag)
-                dsfId = vTag.dsfId.toHexString()
-                tagTechnology = vTag
-            } else {
-                type = "unknown"
-                standard = "unknown"
+    }
+
+
+    private class WorkerThreadHandler() {
+        private var mType = 0
+        private val mOnResultCallback: OnResultCallback = object : OnResultCallback {
+            override fun onResult(status: Boolean, vararg response: String) {
+//                sendMessage(mType, status, response)
+//                System.out.println(response[0])
+                Log.w("NfcpkgPlugin: ", response[0])
             }
 
-            // detect ndef
-            if (tag.techList.contains(Ndef::class.java.name)) {
-                val ndefTag = Ndef.get(tag)
-                ndefTechnology = ndefTag
-                ndefAvailable = true
-                ndefType = ndefTag.type
-                ndefWritable = ndefTag.isWritable
-                ndefCanMakeReadOnly = ndefTag.canMakeReadOnly()
-                ndefCapacity = ndefTag.maxSize
+            override fun onFailed(errorCode: Int, errorMsg: String?) {
+//                UIUtils.getHandler().sendEmptyMessage(-1)
             }
-
-            val jsonResult = JSONObject(mapOf(
-                "type" to type,
-                "id" to id,
-                "standard" to standard,
-                "atqa" to atqa,
-                "sak" to sak,
-                "historicalBytes" to historicalBytes,
-                "protocolInfo" to protocolInfo,
-                "applicationData" to applicationData,
-                "hiLayerResponse" to hiLayerResponse,
-                "manufacturer" to manufacturer,
-                "systemCode" to systemCode,
-                "dsfId" to dsfId,
-                "ndefAvailable" to ndefAvailable,
-                "ndefType" to ndefType,
-                "ndefWritable" to ndefWritable,
-                "ndefCanMakeReadOnly" to ndefCanMakeReadOnly,
-                "ndefCapacity" to ndefCapacity,
-            ))
-
-            if (mifareInfo != null) {
-                with(mifareInfo!!) {
-                    jsonResult.put("mifareInfo", JSONObject(mapOf(
-                        "type" to typeStr,
-                        "size" to size,
-                        "blockSize" to blockSize,
-                        "blockCount" to blockCount,
-                        "sectorCount" to sectorCount
-                    )))
-                }
-            }
-
-            result.success(jsonResult.toString())
         }
 
-        nfcAdapter.enableReaderMode(activity, pollHandler, technologies, null)
+        fun handleMessage(mType: Int, data: ByteArray) {
+//            val aTag = NfcA.get(tags)
+//            val tag = tagAll
+//            GeneralNFC.getInstance().setTag(tag)
+            when (mType) {
+                0 -> GeneralNFC.getInstance().getBasicData(mOnResultCallback)
+//                1 -> GeneralNFC.getInstance().checkWakeUp(mOnResultCallback)
+//                2 -> GeneralNFC.getInstance().doSleep(mOnResultCallback)
+//                3 -> GeneralNFC.getInstance().initUHF(mOnResultCallback)
+//                4 -> GeneralNFC.getInstance().turnOnLED(mOnResultCallback)
+//                5 -> GeneralNFC.getInstance().turnOffLED(mOnResultCallback)
+//                6 -> GeneralNFC.getInstance().checkStatus(mOnResultCallback)
+//                    7 -> GeneralNFC.getInstance().startLogging(
+//                        SpUtils.getIntValue(MyConstant.delayTime, 0),
+//                        SpUtils.getIntValue(MyConstant.intervalTime, 1),
+//                        SpUtils.getIntValue(MyConstant.tpCount, 10),
+//                        SpUtils.getIntValue(MyConstant.min_limit0, 0),
+//                        SpUtils.getIntValue(MyConstant.max_limit0, 20),
+//                        SpUtils.getIntValue(MyConstant.tpMode, 0), mOnResultCallback
+//                    )
+
+//                8 -> {
+////                    val msgData: Bundle = msg.getData()
+//                    GeneralNFC.getInstance()
+//                        .stopLogging(msgData.getString("pwd"), mOnResultCallback)
+//                }
+//
+//                9 -> {
+//                    val data2: Bundle = msg.getData()
+//                    val filed = data2.getBoolean("filed")
+//                    GeneralNFC.getInstance().getLoggingResult(true, mOnResultCallback)
+//                }
+
+                10 -> {
+//                        val data: Bundle = msg.getData()
+//                        val dataString = data.getString("data")
+                    try {
+                        GeneralNFC.getInstance().sendInstruct(
+                            data,
+                            mOnResultCallback
+                        )
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+//                                UIUtils.getHandler().sendEmptyMessage(-1)
+                    }
+                }
+
+//                11 -> GeneralNFC.getInstance().configPrimitiveMode(mOnResultCallback)
+//                12 -> {
+//                    val data1: Bundle = msg.getData()
+//                    val mode = data1.getInt("mode")
+//                    GeneralNFC.getInstance().configStandardMode(mode, mOnResultCallback)
+//                }
+//
+//                13 -> {
+//                    val bundle: Bundle = msg.getData()
+//                    val pwd = bundle.getString("pwd")
+//                    val address = bundle.getByteArray("address")
+//                    GeneralNFC.getInstance()
+//                        .settingPassword(pwd, address, mOnResultCallback)
+//                }
+//
+//                14 -> {
+//                    val bundle1: Bundle = msg.getData()
+//                    GeneralNFC.getInstance().updatePassword(
+//                        bundle1.getString("oldPwd"),
+//                        bundle1.getString("newPwd"),
+//                        bundle1.getByteArray("address"),
+//                        mOnResultCallback
+//                    )
+//                }
+//
+//                15 -> {
+//                    val bundleData: Bundle = msg.getData()
+//                    GeneralNFC.getInstance().switchStorageMode(
+//                        bundleData.getInt("mode"),
+////                                setDataToBundle(),
+//                        mOnResultCallback
+//                    )
+//                }
+
+                else -> {}
+            }
+
+
+        }
+
+        private fun sendMessage(what: Int, status: Boolean, data: Array<String>) {
+//            val bundle = Bundle()
+//            bundle.putBoolean("status", status)
+//            bundle.putStringArray("data", data)
+//            val message = Message()
+//            message.what = what
+//            message.obj = bundle
+//            if (UIUtils.getHandler() != null) {
+//                UIUtils.getHandler().sendMessage(message)
+//            }
+        }
+
+
     }
+//
 }

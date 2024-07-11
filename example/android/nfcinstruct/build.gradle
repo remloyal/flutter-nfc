@@ -1,0 +1,51 @@
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 29
+    buildToolsVersion "29.0.2"
+
+
+    defaultConfig {
+
+        compileSdkVersion  31
+        minSdkVersion 21
+        targetSdkVersion  31
+        versionName = getVersionName()
+        versionCode = getVersionCode()
+
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles 'consumer-rules.pro'
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+}
+
+dependencies {
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+
+def  getVersionName() {
+    return "9.3.7"
+}
+def getVersionCode() {
+    String[] split = getVersionName().split("\\.");
+    String result = "";
+    for (int i = 0; i <split.length ; i++) {
+        int parseInt = Integer.parseInt(split[i]);
+        String hex = Integer.toHexString(parseInt);
+        if (hex.length()!= 2){
+            hex= "0"+hex;
+        }
+        result = result+hex;
+    }
+    return Integer.parseInt(result,16);
+
+
+}
